@@ -50,26 +50,18 @@ export function parsePrefixCommand(content, prefix) {
 }
 
 
+
 function parseArguments(input) {
   const args = [];
   let current = '';
   let inQuote = false;
   let quoteChar = '';
 
- for (let i = 0; i < Math.min(currentArgs.length, optionDefs.length); i++) {
-  const optionDef = optionDefs[i];
-
-  if (optionDef.type === 3 && i === optionDefs.length - 1) {
-    options[optionDef.name] = currentArgs.slice(i).join(' ');
-    break;
-  }
-
-  options[optionDef.name] = currentArgs[i];
-}
+  for (let i = 0; i < input.length; i++) {
+    const char = input[i];
 
     if (inQuote) {
       if (char === quoteChar) {
-        
         inQuote = false;
         args.push(current);
         current = '';
@@ -78,7 +70,6 @@ function parseArguments(input) {
       }
     } else {
       if (char === '"' || char === "'") {
-        
         if (current.trim()) {
           args.push(current.trim());
           current = '';
@@ -86,7 +77,6 @@ function parseArguments(input) {
         inQuote = true;
         quoteChar = char;
       } else if (char === ' ') {
-        
         if (current.trim()) {
           args.push(current.trim());
           current = '';
