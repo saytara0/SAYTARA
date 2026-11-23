@@ -1,3 +1,10 @@
+import { handleRolePrefixCommand } from '../utils/rolePrefixCommands.js';
+if (countingProcessed) {
+    return;
+}const roleCommandHandled = await handleRolePrefixCommand(message, client);
+if (roleCommandHandled) {
+    return;
+}
 import { Events } from 'discord.js';
 import { logger } from '../utils/logger.js';
 import { getLevelingConfig, getUserLevelData } from '../services/leveling/leveling.js';
