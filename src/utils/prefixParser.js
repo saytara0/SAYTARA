@@ -4,9 +4,50 @@ import { resolveSubcommandAlias } from '../config/commands/commandAliases.js';
 import { logger } from './logger.js';
 
 export function parsePrefixCommand(content, prefix) {
-  if (!content || !content.startsWith(prefix)) {
+  if (!content) {
     return null;
   }
+
+  const hasPrefix = prefix && content.startsWith(prefix);
+
+  const withoutPrefix = hasPrefix
+    ? content.slice(prefix.length).trim()
+    : content.trim();
+
+  if (!withoutPrefix) {
+    return null;
+  }
+
+  const args = parseArguments(withoutPrefix);
+
+  if (args.length === 0) {
+    return null;
+  }
+
+  const commandName = args[0].toLowerCase();
+
+  const arabicModerationCommands = new Set([
+    'تايم',
+    'بان',
+    'طرد',
+    'تحذير',
+    'مسح',
+    'قفل',
+    'فتح',
+    'فك',
+  ]);
+
+  if (!hasPrefix && !arabicModerationCommands.has(commandName)) {
+    return null;
+  }
+
+  const commandArgs = args.slice(1);
+
+  return {
+    commandName,
+    args: commandArgs
+  };
+}
 
   const withoutPrefix = content.slice(prefix.length).trim();
   
