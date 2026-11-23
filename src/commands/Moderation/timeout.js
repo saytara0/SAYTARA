@@ -45,7 +45,7 @@ export default {
             logger.warn(`Timeout interaction defer failed`, {
                 userId: interaction.user.id,
                 guildId: interaction.guildId,
-                commandName: 'timeout',
+                commandName: 'تايم',
             });
             return;
         }
