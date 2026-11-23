@@ -33,6 +33,15 @@ export const commandAliases = {
     'purge': 'purge',
     'untimeout': 'untimeout',
     'unmute': 'untimeout',
+    // Arabic moderation aliases
+'تايم': 'تايم',
+'بان': 'ban',
+'طرد': 'kick',
+'تحذير': 'warn',
+'مسح': 'purge',
+'قفل': 'lock',
+'فتح': 'unlock',
+'فك': 'untimeout',
 
     'rank': 'rank',
     'lvl': 'rank',
