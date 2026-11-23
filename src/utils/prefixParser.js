@@ -13,7 +13,7 @@ export function parsePrefixCommand(content, prefix) {
   const withoutPrefix = hasPrefix
     ? content.slice(prefix.length).trim()
     : content.trim();
-
+  
   if (!withoutPrefix) {
     return null;
   }
