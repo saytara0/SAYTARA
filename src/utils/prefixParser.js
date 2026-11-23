@@ -49,26 +49,6 @@ export function parsePrefixCommand(content, prefix) {
   };
 }
 
-  const withoutPrefix = content.slice(prefix.length).trim();
-  
-  if (!withoutPrefix) {
-    return null;
-  }
-
-  const args = parseArguments(withoutPrefix);
-  
-  if (args.length === 0) {
-    return null;
-  }
-
-  const commandName = args[0].toLowerCase();
-  const commandArgs = args.slice(1);
-
-  return {
-    commandName,
-    args: commandArgs
-  };
-}
 
 function parseArguments(input) {
   const args = [];
