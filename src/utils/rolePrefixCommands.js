@@ -1,17 +1,88 @@
 
-import { PermissionFlagsBits } from 'discord.js';
+import {
+    ActionRowBuilder,
+    PermissionFlagsBits,
+    StringSelectMenuBuilder,
+} from 'discord.js';
+
+const PICKER_ID = 'role_picker';
+const PAGE_SIZE = 23;
+
+function canManageRole(actor, botMember, role, guild) {
+    const actorAllowed =
+        actor.id === guild.ownerId ||
+        actor.roles.highest.comparePositionTo(role) > 0;
+
+    const botAllowed =
+        botMember.roles.highest.comparePositionTo(role) > 0;
+
+    return actorAllowed && botAllowed;
+}
+
+function getAvailableRoles(guild, actor, botMember, target, action) {
+    return guild.roles.cache
+        .filter(role => {
+            if (role.id === guild.id || role.managed) return false;
+            if (!canManageRole(actor, botMember, role, guild)) return false;
+
+            return action === 'add'
+                ? !target.roles.cache.has(role.id)
+                : target.roles.cache.has(role.id);
+        })
+        .sort((a, b) => b.position - a.position)
+        .map(role => ({
+            label: role.name.slice(0, 100),
+            value: role.id,
+        }));
+}
+
+function createRoleMenu(action, targetId, actorId, roles, page) {
+    const start = page * PAGE_SIZE;
+    const pageRoles = roles.slice(start, start + PAGE_SIZE);
+
+    const options = pageRoles.map(role => ({
+        label: role.label,
+        value: role.value,
+    }));
+
+    if (page > 0) {
+        options.unshift({
+            label: '⬅ Previous page',
+            value: '__previous__',
+        });
+    }
+
+    if (start + PAGE_SIZE < roles.length) {
+        options.push({
+            label: 'Next page ➡',
+            value: '__next__',
+        });
+    }
+
+    const menu = new StringSelectMenuBuilder()
+        .setCustomId(`${PICKER_ID}:${action}:${targetId}:${actorId}:${page}`)
+        .setPlaceholder(
+            action === 'add'
+                ? 'Select a role to add...'
+                : 'Select a role to remove...'
+        )
+        .addOptions(options);
+
+    return new ActionRowBuilder().addComponents(menu);
+}
 
 export async function handleRolePrefixCommand(message, client) {
     const match = message.content.trim().match(/^(رول|شيل)(?:\s+([\s\S]*))?$/);
+
     if (!match || !message.guild) return false;
 
-    const action = match[1];
+    const action = match[1] === 'رول' ? 'add' : 'remove';
     const tail = match[2] || '';
-    const isAdd = action === 'رول';
 
-    const send = (content) => message.channel.send(content).catch(() => {});
+    const send = content =>
+        message.channel.send(content).catch(() => {});
 
-    if (!message.member.permissions.has(PermissionFlagsBits.ManageRoles)) {
+    if (!message.member?.permissions.has(PermissionFlagsBits.ManageRoles)) {
         await send('❌ محتاج صلاحية Manage Roles لاستخدام الأمر.');
         return true;
     }
@@ -19,7 +90,6 @@ export async function handleRolePrefixCommand(message, client) {
     const mention = tail.match(/<@!?(\d+)>/);
     let targetId = mention?.[1];
 
-    // لو مفيش منشن، نحاول نجيب العضو من الـ Reply
     if (!targetId && message.reference) {
         const replied = await message.fetchReference().catch(() => null);
         if (replied) targetId = replied.author.id;
@@ -30,105 +100,192 @@ export async function handleRolePrefixCommand(message, client) {
         return true;
     }
 
-    const target = await message.guild.members.fetch(targetId).catch(() => null);
+    const guild = message.guild;
+    const target = await guild.members.fetch(targetId).catch(() => null);
 
     if (!target) {
         await send('❌ العضو مش موجود في السيرفر.');
         return true;
     }
 
-    const botMember = message.guild.members.me ||
-        await message.guild.members.fetch(client.user.id);
+    if (target.id === guild.ownerId) {
+        await send('❌ لا يمكن تعديل رتب مالك السيرفر.');
+        return true;
+    }
 
     const actor = message.member;
-    const everyoneRole = message.guild.id;
+    const botMember = guild.members.me ||
+        await guild.members.fetch(client.user.id);
 
     if (!botMember.permissions.has(PermissionFlagsBits.ManageRoles)) {
         await send('❌ البوت محتاج صلاحية Manage Roles.');
         return true;
     }
 
-    if (target.id === message.guild.ownerId) {
-        await send('❌ لا يمكن تعديل رتب مالك السيرفر.');
+    const roles = getAvailableRoles(
+        guild,
+        actor,
+        botMember,
+        target,
+        action
+    );
+
+    if (!roles.length) {
+        await send(
+            action === 'add'
+                ? 'ℹ️ مفيش رتب متاحة تقدر تضيفها للعضو.'
+                : 'ℹ️ العضو مفيش عنده رتب تقدر تشيلها.'
+        );
         return true;
     }
 
-    if (actor.id !== message.guild.ownerId &&
-        actor.roles.highest.comparePositionTo(target.roles.highest) <= 0) {
-        await send('❌ رتبة العضو أعلى من رتبتك أو مساوية لها.');
+    const row = createRoleMenu(
+        action,
+        target.id,
+        message.author.id,
+        roles,
+        0
+    );
+
+    await message.channel.send({
+        content: action === 'add'
+            ? `**Add Role**\nChoose a role to add to <@${target.id}>.`
+            : `**Remove Role**\nChoose a role to remove from <@${target.id}>.`,
+        components: [row],
+    }).catch(() => {});
+
+    return true;
+}
+
+export async function handleRolePickerInteraction(interaction, client) {
+    const parts = interaction.customId.split(':');
+
+    const action = parts[1];
+    const targetId = parts[2];
+    const actorId = parts[3];
+    const page = Number(parts[4]);
+
+    if (interaction.user.id !== actorId) {
+        await interaction.reply({
+            content: '❌ القائمة دي مش بتاعتك.',
+            ephemeral: true,
+        });
         return true;
     }
 
-    if (botMember.roles.highest.comparePositionTo(target.roles.highest) <= 0) {
-        await send('❌ رتبة البوت لازم تكون أعلى من أعلى رتبة للعضو.');
+    const guild = interaction.guild;
+
+    if (
+        !guild ||
+        !['add', 'remove'].includes(action) ||
+        !Number.isInteger(page) ||
+        page < 0
+    ) {
+        await interaction.reply({
+            content: '❌ القائمة غير صالحة.',
+            ephemeral: true,
+        });
         return true;
     }
 
-    if (isAdd) {
-        const roleName = tail.replace(/<@!?\d+>/g, '').trim();
+    const actor = await guild.members.fetch(actorId).catch(() => null);
+    const target = await guild.members.fetch(targetId).catch(() => null);
+    const botMember = guild.members.me ||
+        await guild.members.fetch(client.user.id).catch(() => null);
 
-        if (!roleName) {
-            await send('❌ اكتب اسم الرول. مثال: `رول Admin @Member`');
-            return true;
-        }
+    if (
+        !actor ||
+        !target ||
+        !botMember ||
+        !actor.permissions.has(PermissionFlagsBits.ManageRoles) ||
+        !botMember.permissions.has(PermissionFlagsBits.ManageRoles)
+    ) {
+        await interaction.reply({
+            content: '❌ صلاحيات إدارة الرتب غير متاحة.',
+            ephemeral: true,
+        });
+        return true;
+    }
 
-        const role = message.guild.roles.cache.find(
-            r => r.name.toLowerCase() === roleName.toLowerCase()
+    if (target.id === guild.ownerId) {
+        await interaction.reply({
+            content: '❌ لا يمكن تعديل رتب مالك السيرفر.',
+            ephemeral: true,
+        });
+        return true;
+    }
+
+    const roles = getAvailableRoles(
+        guild,
+        actor,
+        botMember,
+        target,
+        action
+    );
+
+    const selected = interaction.values[0];
+
+    if (selected === '__previous__' || selected === '__next__') {
+        const nextPage = selected === '__next__'
+            ? page + 1
+            : page - 1;
+
+        const maxPage = Math.max(
+            0,
+            Math.ceil(roles.length / PAGE_SIZE) - 1
         );
 
-        if (!role || role.id === everyoneRole || role.managed) {
-            await send('❌ الرول غير موجود أو لا يمكن إدارته.');
-            return true;
-        }
+        const safePage = Math.min(Math.max(nextPage, 0), maxPage);
 
-        if (actor.id !== message.guild.ownerId &&
-            actor.roles.highest.comparePositionTo(role) <= 0) {
-            await send('❌ الرول أعلى من رتبتك أو مساوي لها.');
-            return true;
-        }
+        await interaction.update({
+            components: [
+                createRoleMenu(action, targetId, actorId, roles, safePage),
+            ],
+        });
 
-        if (botMember.roles.highest.comparePositionTo(role) <= 0) {
-            await send('❌ لازم ترفع رتبة البوت فوق الرول المطلوب.');
-            return true;
-        }
-
-        if (target.roles.cache.has(role.id)) {
-            await send('ℹ️ العضو عنده الرول بالفعل.');
-            return true;
-        }
-
-        await target.roles.add(role, `Added by ${message.author.tag}`);
-        await send(`✅ تمت إضافة ${role} إلى ${target}.`);
         return true;
     }
 
-    const roles = target.roles.cache
-        .filter(role =>
-            role.id !== everyoneRole &&
-            !role.managed
-        )
-        .sort((a, b) => b.position - a.position);
+    const role = guild.roles.cache.get(selected);
 
-    const highestRole = roles.first();
+    const stillAvailable = roles.some(item => item.value === selected);
 
-    if (!highestRole) {
-        await send('ℹ️ العضو لا يمتلك أي رتب قابلة للإزالة.');
+    if (!role || !stillAvailable) {
+        await interaction.reply({
+            content: '❌ الرتبة دي مبقتش متاحة. افتح الأمر من جديد.',
+            ephemeral: true,
+        });
         return true;
     }
 
-    if (actor.id !== message.guild.ownerId &&
-        actor.roles.highest.comparePositionTo(highestRole) <= 0) {
-        await send('❌ لا تملك صلاحية إزالة أعلى رتبة عند العضو.');
-        return true;
-    }
+    try {
+        if (action === 'add') {
+            await target.roles.add(
+                role,
+                `Added by ${interaction.user.tag}`
+            );
 
-    if (botMember.roles.highest.comparePositionTo(highestRole) <= 0) {
-        await send('❌ رتبة البوت أقل من الرتبة المطلوب إزالتها.');
-        return true;
-    }
+            await interaction.update({
+                content: `✅ تمت إضافة رتبة **${role.name}** إلى <@${target.id}>.`,
+                components: [],
+            });
+        } else {
+            await target.roles.remove(
+                role,
+                `Removed by ${interaction.user.tag}`
+            );
 
-    await target.roles.remove(highestRole, `Removed by ${message.author.tag}`);
-    await send(`✅ تمت إزالة أعلى رتبة **${highestRole.name}** من ${target}.`);
+            await interaction.update({
+                content: `✅ تمت إزالة رتبة **${role.name}** من <@${target.id}>.`,
+                components: [],
+            });
+        }
+    } catch (error) {
+        await interaction.reply({
+            content: '❌ مقدرتش أعدّل الرتبة. راجع ترتيب رتب البوت وصلاحياته.',
+            ephemeral: true,
+        }).catch(() => {});
+    }
 
     return true;
 }
