@@ -71,6 +71,7 @@ function createRoleMenu(action, targetId, actorId, roles, page) {
     return new ActionRowBuilder().addComponents(menu);
 }
 
+
 export async function handleRolePrefixCommand(message, client) {
     const match = message.content.trim().match(/^(رول|شيل)(?:\s+([\s\S]*))?$/);
 
@@ -96,7 +97,7 @@ export async function handleRolePrefixCommand(message, client) {
     }
 
     if (!targetId) {
-        await send('❌ منشن العضو أو اعمل Reply على رسالته.');
+        await send('❌ اعمل Reply على رسالة العضو أو اعمله منشن.');
         return true;
     }
 
@@ -122,6 +123,46 @@ export async function handleRolePrefixCommand(message, client) {
         return true;
     }
 
+    // لو كتبت اسم رتبة بعد الأمر، نفذ مباشرة
+    const roleName = tail.replace(/<@!?\d+>/g, '').trim();
+
+    if (roleName) {
+        const role = guild.roles.cache.find(
+            r => r.name.toLowerCase() === roleName.toLowerCase()
+        );
+
+        if (!role || role.id === guild.id || role.managed) {
+            await send('❌ الرتبة غير موجودة أو لا يمكن إدارتها.');
+            return true;
+        }
+
+        if (!canManageRole(actor, botMember, role, guild)) {
+            await send('❌ لا تملك أنت أو البوت صلاحية إدارة الرتبة دي بسبب ترتيب الرتب.');
+            return true;
+        }
+
+        if (action === 'add') {
+            if (target.roles.cache.has(role.id)) {
+                await send('ℹ️ العضو عنده الرتبة دي بالفعل.');
+                return true;
+            }
+
+            await target.roles.add(role, `Added by ${message.author.tag}`);
+            await send(`✅ تمت إضافة رتبة **${role.name}** إلى ${target}.`);
+        } else {
+            if (!target.roles.cache.has(role.id)) {
+                await send('ℹ️ العضو مش معاه الرتبة دي.');
+                return true;
+            }
+
+            await target.roles.remove(role, `Removed by ${message.author.tag}`);
+            await send(`✅ تمت إزالة رتبة **${role.name}** من ${target}.`);
+        }
+
+        return true;
+    }
+
+    // لو مفيش اسم رتبة، افتح قائمة الاختيار
     const roles = getAvailableRoles(
         guild,
         actor,
@@ -152,10 +193,11 @@ export async function handleRolePrefixCommand(message, client) {
             ? `**Add Role**\nChoose a role to add to <@${target.id}>.`
             : `**Remove Role**\nChoose a role to remove from <@${target.id}>.`,
         components: [row],
-    }).catch(() => {});
+    });
 
     return true;
 }
+
 
 export async function handleRolePickerInteraction(interaction, client) {
     const parts = interaction.customId.split(':');
