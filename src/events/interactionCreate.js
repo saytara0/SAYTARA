@@ -363,6 +363,10 @@ export default {
         } else if (interaction.isStringSelectMenu()) {
           const [customId, ...args] = interaction.customId.split(':');
           const selectMenu = client.selectMenus.get(customId);
+                    if (interaction.customId.startsWith('role_picker:')) {
+            await handleRolePickerInteraction(interaction, client);
+            return;
+          }
 
           if (!selectMenu) {
             if (!interaction.customId.includes(':') || isCollectorManagedComponent(customId)) {
